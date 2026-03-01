@@ -2,6 +2,8 @@ import os
 from dataclasses import dataclass
 from transformers import AutoConfig
 
+from nanovllm.utils.device import detect_device_type, is_cpu, supports_cuda_graphs
+
 
 @dataclass
 class Config:
@@ -16,6 +18,7 @@ class Config:
     eos: int = -1
     kvcache_block_size: int = 256
     num_kvcache_blocks: int = -1
+    device_type: str = ""
 
     def __post_init__(self):
         assert os.path.isdir(self.model)
@@ -24,3 +27,8 @@ class Config:
         self.hf_config = AutoConfig.from_pretrained(self.model)
         self.max_model_len = min(self.max_model_len, self.hf_config.max_position_embeddings)
         assert self.max_num_batched_tokens >= self.max_model_len
+        self.device_type = detect_device_type()
+        if is_cpu():
+            self.enforce_eager = True
+        if not supports_cuda_graphs():
+            self.enforce_eager = True

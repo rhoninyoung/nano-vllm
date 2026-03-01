@@ -1,4 +1,3 @@
-from functools import lru_cache
 import torch
 from torch import nn
 
@@ -48,7 +47,8 @@ class RotaryEmbedding(nn.Module):
         return query, key
 
 
-@lru_cache(1)
+_rope_cache = {}
+
 def get_rope(
     head_size: int,
     rotary_dim: int,
@@ -56,6 +56,7 @@ def get_rope(
     base: float,
     rope_scaling: dict | None = None,
 ):
-    assert rope_scaling is None
-    rotary_emb = RotaryEmbedding(head_size, rotary_dim, max_position, base)
-    return rotary_emb
+    cache_key = (head_size, rotary_dim, max_position, base)
+    if cache_key not in _rope_cache:
+        _rope_cache[cache_key] = RotaryEmbedding(head_size, rotary_dim, max_position, base)
+    return _rope_cache[cache_key]
