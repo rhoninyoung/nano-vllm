@@ -24,6 +24,7 @@ class ModelRunner:
         self.rank = rank
         self.event = event
 
+        import time as _time
         backend = "gloo" if self.device == "cpu" else "nccl"
         dist.init_process_group(backend, "tcp://localhost:2333", world_size=self.world_size, rank=rank)
         if self.device != "cpu":
@@ -31,11 +32,20 @@ class ModelRunner:
         default_dtype = torch.get_default_dtype()
         torch.set_default_dtype(hf_config.torch_dtype)
         torch.set_default_device(self.device)
+        _t = _time.time()
+        print(f"[ModelRunner] Creating model on {self.device}...", flush=True)
         self.model = Qwen3ForCausalLM(hf_config)
+        print(f"[ModelRunner] Loading weights...", flush=True)
         load_model(self.model, config.model)
         self.sampler = Sampler()
+        print(f"[ModelRunner] Model loaded in {_time.time()-_t:.1f}s", flush=True)
+        _t = _time.time()
+        print(f"[ModelRunner] Warmup (includes torch.compile JIT, may take 1-3 min on first CPU run)...", flush=True)
         self.warmup_model()
+        print(f"[ModelRunner] Warmup done in {_time.time()-_t:.1f}s", flush=True)
+        _t = _time.time()
         self.allocate_kv_cache()
+        print(f"[ModelRunner] KV cache allocated: {config.num_kvcache_blocks} blocks in {_time.time()-_t:.1f}s", flush=True)
         if not self.enforce_eager:
             self.capture_cudagraph()
         torch.set_default_device("cpu")
@@ -96,9 +106,15 @@ class ModelRunner:
         if self.device != "cpu":
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
-        max_num_batched_tokens, max_model_len = self.config.max_num_batched_tokens, self.config.max_model_len
-        num_seqs = min(max_num_batched_tokens // max_model_len, self.config.max_num_seqs)
-        seqs = [Sequence([0] * max_model_len) for _ in range(num_seqs)]
+        if self.device == "cpu":
+            # On CPU warmup only needs to trigger torch.compile; use tiny input
+            seqs = [Sequence([0] * 4)]
+        else:
+            # On GPU warmup measures peak memory for KV cache sizing
+            max_num_batched_tokens = self.config.max_num_batched_tokens
+            max_model_len = self.config.max_model_len
+            num_seqs = min(max_num_batched_tokens // max_model_len, self.config.max_num_seqs)
+            seqs = [Sequence([0] * max_model_len) for _ in range(num_seqs)]
         self.run(seqs, True)
         if self.device != "cpu":
             torch.cuda.empty_cache()
