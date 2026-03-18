@@ -1,0 +1,16 @@
+Benchmark Results
+==================================================
+
+Unfused P50: 0.00201444 s
+Fused P50: 0.00200543 s
+P50 Speedup: 1.00x
+
+Unfused P90: 0.00250526 s
+Fused P90: 0.00266617 s
+P90 Speedup: 0.94x
+
+Unfused P99: 0.00306731 s
+Fused P99: 0.00373091 s
+P99 Speedup: 0.82x
+
+Result consistency: ✅
